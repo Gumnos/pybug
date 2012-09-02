@@ -48,7 +48,10 @@ else:
     # pylint: disable=F0401
     import pwd # only available on non-win32
     LOCAL_USERNAME = pwd.getpwnam(LOCAL_USER_ID).pw_gecos.split(',', 1)[0]
-LOCAL_EMAIL = "%s@%s" % (LOCAL_USER_ID, gethostname())
+LOCAL_EMAIL = (
+    os.environ.get("EMAIL", "") or
+    "%s@%s" % (LOCAL_USER_ID, gethostname())
+    )
 
 if IS_WINDOWS:
     DEFAULT_USER_DIR = os.path.join(
