@@ -7,12 +7,13 @@ import getpass
 import logging
 import optparse
 import os
+import re
 import shutil
 import sys
 import tempfile
 import unittest
 
-APP_NAME = "pbf"
+APP_NAME = "pb"
 
 DEFAULT_ERROR_LEVEL = logging.FATAL
 logging.basicConfig(level=DEFAULT_ERROR_LEVEL)
@@ -75,8 +76,8 @@ DEF_PENDING_CATEGORIES = set([
     "bugs",
     "features",
     ])
-DEF_DONE = "done",
-DEF_DIR = "todo"
+DEF_DONE_CATEGORY = "done",
+DEF_DIRNAME = "todo"
 DEF_PRIORITY = "normal"
 DEF_PRIORITIES = set([
     "high",
@@ -89,7 +90,7 @@ DEF_PRIORITIES = set([
 ##################################################
 CONF_SEC_CONFIG = "config"
 CONF_EMAIL = "email"
-CONF_NAME = "name"
+CONF_USERNAME = "name"
 CONF_DIRNAME = "dirname"
 CONF_PENDING_CATEGORIES = "pending_categories"
 CONF_DONE_CATEGORY = "done_category"
@@ -103,6 +104,7 @@ CMD_TEST = "test"
 CMD_HELP = "help"
 CMD_ADD = "add"
 CMD_COMPLETE = "complete"
+CMD_CLOSE = "close"
 CMD_DONE1 = "done"
 CMD_DONE2 = "do"
 CMD_EDIT = "edit"
@@ -114,6 +116,9 @@ OPT_VERBOSE = "verbose"
 OPT_CONFIG = "config"
 
 OPT_PRIORITY = "priority"
+OPT_EMAIL = "email"
+OPT_USERNAME = "username"
+OPT_REVISION = "revision"
 
 ##################################################
 # helper functions
@@ -316,9 +321,12 @@ def do_add(options, config, args):
     results = []
     parser = tweaking_options(config)
     add_options, add_args = parser.parse_args(args)
-    import pdb; pdb.set_trace()
     todo_dir = find_dir_based_on_config(config)
-
+    if add_args:
+        subject = ' '.join(add_args)
+    else:
+        subject = "NO SUBJECT"
+    import pdb; pdb.set_trace()
     return results
 
 def do_complete(options, config, args):
@@ -368,6 +376,7 @@ CMDS = [
     (CMD_HELP, do_help),
     (CMD_ADD, do_add),
     (CMD_COMPLETE, do_complete),
+    (CMD_CLOSE, do_complete),
     (CMD_DONE1, do_complete),
     (CMD_DONE2, do_complete),
     (CMD_EDIT, do_edit),
@@ -424,14 +433,23 @@ def sloppy_choice_callback(option, opt_str, value, parser, choices):
     if given in choices:
         value = given
     else:
+        # see if it starts with the given text
         possible = [
             choice
             for choice in choices
             if choice.startswith(given)
             ]
         if not possible:
-            raise optparse.OptionValueError("Must specify a priority from %r" %
-                choices)
+            # see if it contains the given text
+            possible = [
+                choice
+                for choice in choices
+                if given in choice
+                ]
+            if not possible:
+                raise optparse.OptionValueError(
+                    "Must specify a priority from %r" %
+                    choices)
         if len(possible) > 1:
             raise optparse.OptionValueError("%r is ambiguous, could be %r" %
                 (given, possible))
@@ -444,11 +462,37 @@ def tweaking_options(config):
     priority_string = config.get(CONF_SEC_CONFIG, CONF_PRIORITIES)
     priorities = [
         p.strip().lower()
-        for p in priority_string.split(',')
+        for p in set(priority_string.split(','))
         ]
     parser = optparse.OptionParser()
+    default_email = config.get(CONF_SEC_CONFIG, CONF_EMAIL)
+    default_user = config.get(CONF_SEC_CONFIG, CONF_USERNAME)
+    default_priority = config.get(CONF_SEC_CONFIG, CONF_DEF_PRIORITY)
+    parser.add_option("-e", "--email",
+        help="Email adddress of the submitter "
+            "(default %r)" % default_email,
+        dest=OPT_EMAIL,
+        action="store",
+        default=default_email,
+        )
+    parser.add_option("-u", "--user",
+        help="Name of the submitter "
+            "(default %r)" % default_user,
+        dest=OPT_USERNAME,
+        action="store",
+        default=default_user,
+        )
+    parser.add_option("-r", "--revision",
+        help="Revision number in which this was found",
+        dest=OPT_REVISION,
+        action="store",
+        default=None,
+        )
     parser.add_option("-p", "--priority",
-        help="One of [%s]" % priority_string,
+        help="One of [%s], (default %r)" % (
+            priority_string,
+            default_priority,
+            ),
         dest=OPT_PRIORITY,
         action="callback",
         callback=sloppy_choice_callback,
@@ -475,9 +519,9 @@ def get_default_config():
         c.set(CONF_SEC_CONFIG, name, ','.join(sorted(categories)))
     for name, value in (
             (CONF_EMAIL, LOCAL_EMAIL),
-            (CONF_NAME, LOCAL_USERNAME),
-            (CONF_DIRNAME, DEF_DIR),
-            (CONF_DONE_CATEGORY, DEF_DONE),
+            (CONF_USERNAME, LOCAL_USERNAME),
+            (CONF_DIRNAME, DEF_DIRNAME),
+            (CONF_DONE_CATEGORY, DEF_DONE_CATEGORY),
             (CONF_DEF_PRIORITY, DEF_PRIORITY),
             ):
         c.set(CONF_SEC_CONFIG, name, value)
