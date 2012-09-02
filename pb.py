@@ -124,10 +124,7 @@ def clean_cmd(s):
 def short_desc(fn):
     return getattr(fn, "__doc__", "<undefined>").splitlines()[0]
 
-##################################################
-# implementation
-##################################################
-def find_dir(dirname, _result_cache={}):
+def find_dir(dirname, create=False, _result_cache={}):
     """Walks up from the current directory to find 'dirname'
     If 'dirname' can't be found, create such a directory in
     the current directory
@@ -138,10 +135,14 @@ def find_dir(dirname, _result_cache={}):
     while not os.path.isdir(os.path.join(loc, dirname)):
         loc, _ = os.path.split(loc)
         if loc == last:
-            log.info("Creating %s", os.path.join(cwd, dirname))
-            os.mkdir(dirname)
-            loc = cwd
-            break
+            # we've walked up to the root
+            if create:
+                log.info("Creating %s", os.path.join(cwd, dirname))
+                os.mkdir(dirname)
+                loc = cwd
+                break
+            else:
+                return None
         last = loc
     else:
         if loc != cwd:
@@ -150,10 +151,121 @@ def find_dir(dirname, _result_cache={}):
     _result_cache[dirname] = results
     return results
 
-def find_dir_based_on_config(config):
+def find_dir_based_on_config(config, create=True):
     dirname = config.get(CONF_SEC_CONFIG, CONF_DIRNAME)
-    return find_dir(dirname)
+    return find_dir(dirname, create=create)
 
+def find_or_create_category_dir(dirname, category):
+    """Look in 'dirname' for a directory named 'category'
+    If it exists and is not a directory, raise ValueError
+    """
+    cat_lower = category.strip().lower()
+    for name in os.listdir(todo_dir):
+        full_name = os.path.join(todo_dir, name)
+        if name == category:
+            if os.path.isdir(full_name):
+                return full_name
+            else:
+                raise ValueError("Directory %r already exists as file" %
+                    category)
+    for name in os.listdir(todo_dir):
+        full_name = os.path.join(todo_dir, name)
+        if name.strip().lower() == cat_lower():
+            if os.path.isdir(full_name):
+                return full_name
+            else:
+                raise ValueError("Directory %r already exists as file" %
+                    category)
+    log.info("Creating %s", os.path.join(dirname, category))
+    os.mkdir(os.path.join(dirname, category))
+
+##################################################
+# helper class for VCS integration
+##################################################
+class VCS(object):
+    @classmethod
+    def is_here(self, dir): return False
+    def __init__(self, dir, config):
+        self.dir=dir
+        self.default_email = config.get(CONF_SEC_CONFIG, CONF_EMAIL)
+        self.default_user = config.get(CONF_SEC_CONFIG, CONF_USERNAME)
+    def get_name(self): return self.default_user
+    def get_email(self): return self.default_email
+    def get_rev(self): return None
+    def _output_of(self, cmd):
+        "a helper function to fetch the output of a given command"
+        import subprocess
+        return subprocess.check_output(cmd).strip()
+
+class Git(VCS):
+    @classmethod
+    def is_here(self, dir):
+        return bool(find_dir('.git'))
+    def get_name(self):
+        return self._output_of("git config --get user.name") or self.default_user
+    def get_email(self):
+        return self._output_of("git config --get user.email") or self.default_email
+    def get_rev(self):
+        return self._output_of("git rev-parse HEAD")
+class CombinedUserEmailVCS(VCS):
+    def __init__(self, dir, config):
+        VCS.__init__(self, dir, config)
+        info = self.get_useremail()
+        user_email_re = re.compile('(.*?) +<(.*)$')
+        m = user_email_re.match(info)
+        if m:
+            self.name, self.email = [s.strip() for s in m.groups()]
+        else:
+            self.name = self.default_user
+            self.email = self.default_email
+    def get_useremail(self): raise NotImplementedError
+    def get_name(self):
+        return self.name
+    def get_email(self):
+        return self.email
+    
+class Bazaar(CombinedUserEmailVCS):
+    @classmethod
+    def is_here(self, dir):
+        return bool(find_dir('.bzr'))
+    def get_useremail(self):
+        info = self._output_of("bzr whoami")
+    def get_rev(self):
+        return self._output_of("bzr version-info --template='{revision_id}' --custom")
+
+class Mercurial(CombinedUserEmailVCS):
+    @classmethod
+    def is_here(self, dir):
+        return bool(find_dir('.hg'))
+    def get_useremail(self):
+        info = self._output_of("hg showconfig ui.username")
+    def get_rev(self):
+        return self._output_of("hg parents --template '{node}'")
+
+class Subversion(VCS):
+    @classmethod
+    def is_here(self, dir):
+        # Subversion only checks the current directory
+        return os.path.isdir('.svn')
+    def get_rev(self):
+        pass
+
+VCS_HELPERS = [
+    Git,
+    Bazaar,
+    Mercurial,
+    Subversion,
+    ]
+
+def find_vcs(dir):
+    for vcs in VCS_HELPERS:
+        if vcs.is_here(dir):
+            return vcs(dir)
+    return None
+
+##################################################
+# implementation
+##################################################
 def do_test(options, config, args):
     """Run the test suite
     """
