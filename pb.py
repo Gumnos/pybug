@@ -535,7 +535,7 @@ def main(*args):
     config = get_default_config()
     config.read([
         os.path.join(DEFAULT_SYSTEM_CONFIG),
-        os.path.join(options.config, "config.ini"),
+        options.config,
         ])
     if cmd is None:
         parser.print_help()
