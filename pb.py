@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 from glob import glob
 from socket import gethostname
+from uuid import uuid4 as uuid
 import collections
 import ConfigParser
 import getpass
+import hashlib
 import logging
 import optparse
 import os
@@ -20,14 +22,15 @@ logging.basicConfig(level=DEFAULT_ERROR_LEVEL)
 log = logging.getLogger(APP_NAME)
 
 ##################################################
-# platform peculariaties, setting the following
-# IS_WINDOWS
-# LOCAL_USER_ID
-# LOCAL_USERNAME
-# LOCAL_EMAIL
-# DEFAULT_USER_DIR
-# DEFAULT_USER_CONFIG
-# DEFAULT_SYSTEM_DIR
+# platform peculariaties
+#  setting the following:
+#  IS_WINDOWS
+#  LOCAL_USER_ID
+#  LOCAL_USERNAME
+#  LOCAL_EMAIL
+#  DEFAULT_USER_DIR
+#  DEFAULT_USER_CONFIG
+#  DEFAULT_SYSTEM_DIR
 ##################################################
 IS_WINDOWS = sys.platform.lower().startswith("win")
 
@@ -70,13 +73,13 @@ DEFAULT_USER_CONFIG = os.path.join(DEFAULT_USER_DIR, "config.ini")
 DEFAULT_SYSTEM_CONFIG = os.path.join(DEFAULT_SYSTEM_DIR, "%s.ini" % APP_NAME)
 
 ##################################################
-# Defaults
+# defaults
 ##################################################
 DEF_PENDING_CATEGORIES = set([
     "bugs",
     "features",
     ])
-DEF_DONE_CATEGORY = "done",
+DEF_DONE_CATEGORY = "done"
 DEF_DIRNAME = "todo"
 DEF_PRIORITY = "normal"
 DEF_PRIORITIES = set([
@@ -89,13 +92,23 @@ DEF_PRIORITIES = set([
 # configuration .ini constants
 ##################################################
 CONF_SEC_CONFIG = "config"
-CONF_EMAIL = "email"
-CONF_USERNAME = "name"
-CONF_DIRNAME = "dirname"
-CONF_PENDING_CATEGORIES = "pending_categories"
-CONF_DONE_CATEGORY = "done_category"
 CONF_DEF_PRIORITY = "default_priority"
+CONF_DIRNAME = "dirname"
+CONF_DONE_CATEGORY = "done_category"
+CONF_EMAIL = "email"
+CONF_PENDING_CATEGORIES = "pending_categories"
 CONF_PRIORITIES = "priorities"
+CONF_USERNAME = "name"
+
+##################################################
+# parser constants
+##################################################
+OPT_CONFIG = "config"
+OPT_EMAIL = "email"
+OPT_PRIORITY = "priority"
+OPT_REVISION = "revision"
+OPT_USERNAME = "username"
+OPT_VERBOSE = "verbose"
 
 ##################################################
 # parser constants
@@ -112,13 +125,6 @@ CMD_SHOW = "show"
 CMD_COMMENT = "comment"
 CMD_LIST = "list"
 CMD_SEARCH = "search"
-OPT_VERBOSE = "verbose"
-OPT_CONFIG = "config"
-
-OPT_PRIORITY = "priority"
-OPT_EMAIL = "email"
-OPT_USERNAME = "username"
-OPT_REVISION = "revision"
 
 ##################################################
 # helper functions
@@ -160,8 +166,8 @@ def find_dir_based_on_config(config, create=True):
     dirname = config.get(CONF_SEC_CONFIG, CONF_DIRNAME)
     return find_dir(dirname, create=create)
 
-def find_or_create_category_dir(dirname, category):
-    """Look in 'dirname' for a directory named 'category'
+def find_or_create_category_dir(todo_dir, category):
+    """Look in 'todo_dir' for a directory named 'category'
     If it exists and is not a directory, raise ValueError
     """
     cat_lower = category.strip().lower()
@@ -181,8 +187,31 @@ def find_or_create_category_dir(dirname, category):
             else:
                 raise ValueError("Directory %r already exists as file" %
                     category)
-    log.info("Creating %s", os.path.join(dirname, category))
-    os.mkdir(os.path.join(dirname, category))
+    log.info("Creating %s", os.path.join(todo_dir, category))
+    dest = os.path.join(todo_dir, category)
+    os.mkdir(dest)
+    return dest
+
+def transform_subject_to_filename(subject, suffix_length=10):
+    subj = "".join(
+        s.isupper() and s or s.title()
+        for s
+        in re.findall(r"\w+", subject)
+        )
+    u = uuid().hex
+    unique = hashlib.sha1(subject + u).hexdigest()
+    if subj:
+        return subj + "-" + unique[:suffix_length]
+    else:
+        return unique
+
+def get_input(prompt):
+    # a hook for possibly using readline
+    return raw_input("%s: " % prompt)
+
+def choose(prompt, choices):
+    #TODO a hook for menuing and possibly using readline
+    return choices[0]
 
 ##################################################
 # helper class for VCS integration
@@ -321,12 +350,27 @@ def do_add(options, config, args):
     results = []
     parser = tweaking_options(config)
     add_options, add_args = parser.parse_args(args)
-    todo_dir = find_dir_based_on_config(config)
+    categories_str = config.get(CONF_SEC_CONFIG, CONF_PENDING_CATEGORIES)
+    categories = set([
+        category.strip().lower()
+        for category
+        in categories_str.split(',')
+        ])
+    done_category = config.get(CONF_SEC_CONFIG, CONF_DONE_CATEGORY).strip().lower()
+    categories.add(done_category)
+    if add_args:
+        category = add_args[0].strip().lower()
+        if category in categories:
+            del add_args[0]
+        else:
+            category = choose("Category", sorted(categories))
     if add_args:
         subject = ' '.join(add_args)
     else:
-        subject = "NO SUBJECT"
+        subject = get_input("Summary")
     import pdb; pdb.set_trace()
+    todo_dir = find_dir_based_on_config(config)
+    dest_dir = find_or_create_category_dir(todo_dir, category)
     return results
 
 def do_complete(options, config, args):
@@ -568,6 +612,19 @@ def increase_verbosity(cur_level, levels):
         levels = len(known) - 1
     return known[levels]
 
+def config_sanity_check(config):
+    config_priorities = config.get(CONF_SEC_CONFIG, CONF_PRIORITIES).split(',')
+    priorities = set([
+        p.strip().lower()
+        for p in config_priorities
+        ])
+    def_priority = config.get(CONF_SEC_CONFIG, CONF_DEF_PRIORITY).strip().lower()
+    assert def_priority in priorities, (
+        "Default priority %r must be in the list of priorities %r" % (
+        def_priority,
+        config_priorities,
+        ))
+
 def main(*args):
     parser, options, cmd, rest = options_cmd_rest(list(args[1:]))
     new_verbosity = increase_verbosity(
@@ -581,6 +638,7 @@ def main(*args):
         os.path.join(DEFAULT_SYSTEM_CONFIG),
         options.config,
         ])
+    config_sanity_check(config)
     if cmd is None:
         parser.print_help()
         return 1
