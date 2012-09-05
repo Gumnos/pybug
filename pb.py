@@ -4,9 +4,11 @@ from socket import gethostname
 from uuid import uuid4 as uuid
 import collections
 import ConfigParser
+import email
 import getpass
 import hashlib
 import logging
+import mailbox
 import optparse
 import os
 import re
@@ -82,23 +84,24 @@ DEF_PENDING_CATEGORIES = set([
 DEF_DONE_CATEGORY = "done"
 DEF_DIRNAME = "todo"
 DEF_PRIORITY = "normal"
-DEF_PRIORITIES = set([
+PRIORITIES = [
+    "highest",
     "high",
     DEF_PRIORITY,
     "low",
-    ])
+    "lowest",
+    ]
 
 ##################################################
 # configuration .ini constants
 ##################################################
 CONF_SEC_CONFIG = "config"
-CONF_DEF_PRIORITY = "default_priority"
 CONF_DIRNAME = "dirname"
 CONF_DONE_CATEGORY = "done_category"
 CONF_EMAIL = "email"
 CONF_PENDING_CATEGORIES = "pending_categories"
-CONF_PRIORITIES = "priorities"
 CONF_USERNAME = "name"
+CONF_EDITOR = "editor"
 
 ##################################################
 # parser constants
@@ -127,9 +130,19 @@ CMD_LIST = "list"
 CMD_SEARCH = "search"
 
 ##################################################
+# message-header constants
+##################################################
+HEAD_SUBJECT = "Subject"
+HEAD_FROM = "From"
+HEAD_DATE = "Date"
+HEAD_REFERENCES = "References"
+HEAD_MSG_ID = "Message-ID"
+HEAD_PRIORITY = "X-Priority"
+
+##################################################
 # helper functions
 ##################################################
-def clean_cmd(s):
+def clean(s):
     return s.strip().lower()
 
 def short_desc(fn):
@@ -170,7 +183,7 @@ def find_or_create_category_dir(todo_dir, category):
     """Look in 'todo_dir' for a directory named 'category'
     If it exists and is not a directory, raise ValueError
     """
-    cat_lower = category.strip().lower()
+    cat_lower = clean(category)
     for name in os.listdir(todo_dir):
         full_name = os.path.join(todo_dir, name)
         if name == category:
@@ -181,7 +194,7 @@ def find_or_create_category_dir(todo_dir, category):
                     category)
     for name in os.listdir(todo_dir):
         full_name = os.path.join(todo_dir, name)
-        if name.strip().lower() == cat_lower():
+        if clean(name) == cat_lower:
             if os.path.isdir(full_name):
                 return full_name
             else:
@@ -211,7 +224,31 @@ def get_input(prompt):
 
 def choose(prompt, choices):
     #TODO a hook for menuing and possibly using readline
+    log.debug("Arbitrarily choosing %r from %r", choices[0], choices)
     return choices[0]
+
+def build_item(
+        username,
+        email_address,
+        subject,
+        category,
+        priority,
+        content,
+        ):
+    import pdb; pdb.set_trace()
+    msg = email.MIMEText.MIMEText(content)
+    user_string = email.utils.formataddr((username, email_address))
+    msg[HEAD_FROM] = user_string
+    msg[HEAD_SUBJECT] = subject
+    msg[HEAD_DATE] = email.utils.formatdate()
+    msg[HEAD_MSG_ID] = email.utils.make_msgid(
+        transform_subject_to_filename(subject))
+    msg[HEAD_PRIORITY] = priority
+    msg.preamble = content
+    msg = mailbox.mboxMessage(msg)
+    msg.set_from(user_string)
+    msg.set_unixfrom(user_string)
+    return msg
 
 ##################################################
 # helper class for VCS integration
@@ -311,7 +348,7 @@ def do_help(options, config, args):
     """
     results = []
     if args:
-        cmd = clean_cmd(args.pop(0))
+        cmd = clean(args.pop(0))
         if cmd in CMD_MAP:
             fn = CMD_MAP[cmd]
             results.extend(fn.__doc__.splitlines())
@@ -351,26 +388,54 @@ def do_add(options, config, args):
     parser = tweaking_options(config)
     add_options, add_args = parser.parse_args(args)
     categories_str = config.get(CONF_SEC_CONFIG, CONF_PENDING_CATEGORIES)
-    categories = set([
-        category.strip().lower()
+    categories = set(
+        clean(category)
         for category
         in categories_str.split(',')
-        ])
-    done_category = config.get(CONF_SEC_CONFIG, CONF_DONE_CATEGORY).strip().lower()
+        )
+    done_category = clean(config.get(CONF_SEC_CONFIG, CONF_DONE_CATEGORY))
     categories.add(done_category)
     if add_args:
-        category = add_args[0].strip().lower()
-        if category in categories:
-            del add_args[0]
+        category = clean(add_args[0])
+        category = guess_one_of(category, sorted(categories), "Category")
+        if category is None:
+            # TODO
+            pass
         else:
-            category = choose("Category", sorted(categories))
-    if add_args:
-        subject = ' '.join(add_args)
+            del add_args[0]
     else:
-        subject = get_input("Summary")
-    import pdb; pdb.set_trace()
+        category = choose("Category", sorted(categories))
+    log.info("Category %r", category)
+    subject = ''
+    while not subject:
+        if add_args:
+            subject = ' '.join(arg.strip() for arg in add_args)
+        else:
+            subject = get_input("Summary").strip()
+    log.info("Subject %r", subject)
+
+    #TODO get the details of the item either via cmdline or $EDITOR
+
     todo_dir = find_dir_based_on_config(config)
     dest_dir = find_or_create_category_dir(todo_dir, category)
+    fname = transform_subject_to_filename(subject) + ".mbox"
+    content = "This is the body content"
+    item = build_item(
+        add_options.username,
+        add_options.email,
+        subject,
+        category,
+        clean(getattr(add_options, OPT_PRIORITY)),
+        content,
+        )
+    full_fname = os.path.join(dest_dir, fname)
+    log.debug("Location %r", full_fname)
+    mbox = mailbox.mbox(full_fname)
+    mbox.lock()
+    try:
+        mbox.add(item)
+    finally:
+        mbox.unlock()
     return results
 
 def do_complete(options, config, args):
@@ -463,56 +528,70 @@ def options_cmd_rest(args):
         })
     options, args = parser.parse_args(args)
     if args:
-        cmd = clean_cmd(args.pop(0)) or None
+        cmd = clean(args.pop(0)) or None
     else:
         cmd = None
     return parser, options, cmd, args
+
+def guess_one_of(given, choices, prompt):
+    if given in choices: return given
+    # see if it starts with the given text
+    possible = [
+        choice
+        for choice in choices
+        if choice.startswith(given)
+        ]
+    if not possible:
+        # see if it contains the given text
+        possible = [
+            choice
+            for choice in choices
+            if given in choice
+            ]
+        if not possible: return None
+    if len(possible) > 1:
+        if prompt:
+            return choose("Category", sorted(possible))
+    return possible[0]
 
 def sloppy_choice_callback(option, opt_str, value, parser, choices):
     "Works like a <choice> option, but allows for partial matching"
     if len(parser.rargs) == 0:
         raise optparse.OptionValueError("Must specify a priority from %r" %
             choices)
-    given = parser.rargs.pop(0).strip().lower()
-    if given in choices:
-        value = given
-    else:
-        # see if it starts with the given text
-        possible = [
-            choice
-            for choice in choices
-            if choice.startswith(given)
-            ]
-        if not possible:
-            # see if it contains the given text
-            possible = [
-                choice
-                for choice in choices
-                if given in choice
-                ]
-            if not possible:
-                raise optparse.OptionValueError(
-                    "Must specify a priority from %r" %
-                    choices)
-        if len(possible) > 1:
-            raise optparse.OptionValueError("%r is ambiguous, could be %r" %
-                (given, possible))
-        value = possible[0]
+    given = clean(parser.rargs.pop(0))
+    value = guess_one_of(given, choices)
+    if value is None:
+        raise optparse.OptionValueError("Must specify a priority from %r" % choices)
     setattr(parser.values, option.dest, value)
+
+def guess_editor(config):
+    for var in (
+            "%s_VISUAL" % APP_NAME.upper(),
+            "%s_EDITOR" % APP_NAME.upper(),
+            "VISUAL",
+            "EDITOR",
+            ):
+        default_editor = os.environ.get(var)
+        if default_editor: break
+    else:
+        try:
+            default_editor = config.get(CONF_SEC_CONFIG, CONF_EDITOR),
+        except ConfigParser.NoOptionError:
+            if IS_WINDOWS:
+                default_editor = "edit"
+            else:
+                default_editor = "vi"
+    return default_editor
 
 def tweaking_options(config):
     """Adds options for modifying an item
     """
-    priority_string = config.get(CONF_SEC_CONFIG, CONF_PRIORITIES)
-    priorities = [
-        p.strip().lower()
-        for p in set(priority_string.split(','))
-        ]
     parser = optparse.OptionParser()
     default_email = config.get(CONF_SEC_CONFIG, CONF_EMAIL)
     default_user = config.get(CONF_SEC_CONFIG, CONF_USERNAME)
-    default_priority = config.get(CONF_SEC_CONFIG, CONF_DEF_PRIORITY)
-    parser.add_option("-e", "--email",
+
+    parser.add_option("-m", "--email",
         help="Email adddress of the submitter "
             "(default %r)" % default_email,
         dest=OPT_EMAIL,
@@ -532,16 +611,22 @@ def tweaking_options(config):
         action="store",
         default=None,
         )
+    parser.add_option("-e", "--editor",
+        help="Editor",
+        dest=CONF_EDITOR,
+        action="store",
+        default=guess_editor(config),
+        )
     parser.add_option("-p", "--priority",
         help="One of [%s], (default %r)" % (
-            priority_string,
-            default_priority,
+            PRIORITIES,
+            DEF_PRIORITY,
             ),
         dest=OPT_PRIORITY,
         action="callback",
         callback=sloppy_choice_callback,
-        callback_args=(priorities,),
-        default=config.get(CONF_SEC_CONFIG, CONF_DEF_PRIORITY),
+        callback_args=(PRIORITIES,),
+        default=DEF_PRIORITY,
         )
     return parser
 
@@ -556,17 +641,15 @@ def get_default_config():
         dict_type=config_dict,
         )
     c.add_section(CONF_SEC_CONFIG)
-    for name, categories in (
+    for name, items in (
             (CONF_PENDING_CATEGORIES, DEF_PENDING_CATEGORIES),
-            (CONF_PRIORITIES, DEF_PRIORITIES),
             ):
-        c.set(CONF_SEC_CONFIG, name, ','.join(sorted(categories)))
+        c.set(CONF_SEC_CONFIG, name, ','.join(sorted(items)))
     for name, value in (
             (CONF_EMAIL, LOCAL_EMAIL),
             (CONF_USERNAME, LOCAL_USERNAME),
             (CONF_DIRNAME, DEF_DIRNAME),
             (CONF_DONE_CATEGORY, DEF_DONE_CATEGORY),
-            (CONF_DEF_PRIORITY, DEF_PRIORITY),
             ):
         c.set(CONF_SEC_CONFIG, name, value)
     return c
@@ -613,17 +696,7 @@ def increase_verbosity(cur_level, levels):
     return known[levels]
 
 def config_sanity_check(config):
-    config_priorities = config.get(CONF_SEC_CONFIG, CONF_PRIORITIES).split(',')
-    priorities = set([
-        p.strip().lower()
-        for p in config_priorities
-        ])
-    def_priority = config.get(CONF_SEC_CONFIG, CONF_DEF_PRIORITY).strip().lower()
-    assert def_priority in priorities, (
-        "Default priority %r must be in the list of priorities %r" % (
-        def_priority,
-        config_priorities,
-        ))
+    pass
 
 def main(*args):
     parser, options, cmd, rest = options_cmd_rest(list(args[1:]))
