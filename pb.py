@@ -111,6 +111,7 @@ CONF_EDITOR = "editor"
 OPT_CONFIG = "config"
 OPT_EMAIL = "email"
 OPT_PRIORITY = "priority"
+OPT_GATHER_MESSAGE = "gather_message"
 OPT_REVISION = "revision"
 OPT_USERNAME = "username"
 OPT_VERBOSE = "verbose"
@@ -460,6 +461,7 @@ def do_add(options, config, args):
     else:
         category = choose("Category", sorted(categories))
     log.info("Category %r", category)
+
     subject = ''
     while not subject:
         if add_args:
@@ -468,12 +470,15 @@ def do_add(options, config, args):
             subject = get_input("Summary").strip()
     log.info("Subject %r", subject)
 
-    if sys.stdin.isatty():
-        orig_content = make_message(comments=subject.encode("string_escape"))
-        content = edit(getattr(add_options, CONF_EDITOR), orig_content)
-        content = clean_message(content)
+    if getattr(add_options, OPT_GATHER_MESSAGE):
+        if sys.stdin.isatty():
+            orig_content = make_message(comments=subject.encode("string_escape"))
+            content = edit(getattr(add_options, CONF_EDITOR), orig_content)
+            content = clean_message(content)
+        else:
+            content = sys.stdin.read()
     else:
-        content = sys.stdin.read()
+        content = subject
 
     todo_dir = find_dir_based_on_config(config)
     dest_dir = find_or_create_category_dir(todo_dir, category)
@@ -665,6 +670,12 @@ def tweaking_options(config):
         dest=OPT_EMAIL,
         action="store",
         default=default_email,
+        )
+    parser.add_option("-n", "--no-message",
+        help="Don't ask for details in $EDITOR",
+        dest=OPT_GATHER_MESSAGE,
+        default=True,
+        action="store_false",
         )
     parser.add_option("-u", "--user",
         help="Name of the submitter "
