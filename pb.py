@@ -13,6 +13,7 @@ import optparse
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -85,12 +86,14 @@ DEF_DONE_CATEGORY = "done"
 DEF_DIRNAME = "todo"
 DEF_PRIORITY = "normal"
 PRIORITIES = [
-    "highest",
+    "highest", # 1
     "high",
     DEF_PRIORITY,
     "low",
-    "lowest",
+    "lowest", # 5
     ]
+
+CONTENT_PREFIX_TO_IGNORE = "#" + APP_NAME
 
 ##################################################
 # configuration .ini constants
@@ -108,6 +111,7 @@ CONF_EDITOR = "editor"
 ##################################################
 OPT_CONFIG = "config"
 OPT_EMAIL = "email"
+OPT_MESSAGE = "message"
 OPT_PRIORITY = "priority"
 OPT_REVISION = "revision"
 OPT_USERNAME = "username"
@@ -144,6 +148,52 @@ HEAD_PRIORITY = "X-Priority"
 ##################################################
 def clean(s):
     return s.strip().lower()
+
+def make_message(existing=None, comments=None):
+    TEMPLATE = "%s %%s" % CONTENT_PREFIX_TO_IGNORE
+    if existing is None:
+        results = [""] * 2 # some blank lines
+    else:
+        if isinstance(existing, basestring):
+            existing = existing.splitlines()
+    if comments is None:
+        comments = []
+    else:
+        if isinstance(comments, basestring):
+            comments = comments.splitlines()
+    # at this point, both 'existing' and 'comments' are lists
+    comments.extend([
+        "Place more detailed content in here",
+        "Any lines beginning with %s will be ignored" % CONTENT_PREFIX_TO_IGNORE,
+        ])
+
+    results.extend(
+        TEMPLATE % s
+        for s in comments
+        )
+    return '\n'.join(results)
+
+def edit(editor, s=""):
+    "Spawn $editor to edit the content of 's'"
+    (fd, name) = tempfile.mkstemp(
+        prefix=APP_NAME,
+        suffix=".txt",
+        text=True,
+        )
+    try:
+        f = os.fdopen(fd, "w")
+        try:
+            f.write(s)
+        finally:
+            f.close()
+        subprocess.call([editor, name])
+        f = file(name)
+        try:
+            return f.read()
+        finally:
+            f.close()
+    finally:
+        os.unlink(name)
 
 def short_desc(fn):
     return getattr(fn, "__doc__", "<undefined>").splitlines()[0]
@@ -235,7 +285,6 @@ def build_item(
         priority,
         content,
         ):
-    import pdb; pdb.set_trace()
     msg = email.MIMEText.MIMEText(content)
     user_string = email.utils.formataddr((username, email_address))
     msg[HEAD_FROM] = user_string
@@ -414,12 +463,21 @@ def do_add(options, config, args):
             subject = get_input("Summary").strip()
     log.info("Subject %r", subject)
 
-    #TODO get the details of the item either via cmdline or $EDITOR
+    if sys.stdin.isatty():
+        content = make_message(comments=subject.encode("string_escape"))
+        content = edit(getattr(add_options, CONF_EDITOR), content)
+        content = content.strip() # remove leading/trailing blank lines
+        content = '\n'.join(
+            line
+            for line in content.splitlines()
+            if not line.startswith(CONTENT_PREFIX_TO_IGNORE)
+            )
+    else:
+        content = sys.stdin.read()
 
     todo_dir = find_dir_based_on_config(config)
     dest_dir = find_or_create_category_dir(todo_dir, category)
     fname = transform_subject_to_filename(subject) + ".mbox"
-    content = "This is the body content"
     item = build_item(
         add_options.username,
         add_options.email,
@@ -591,6 +649,17 @@ def tweaking_options(config):
     default_email = config.get(CONF_SEC_CONFIG, CONF_EMAIL)
     default_user = config.get(CONF_SEC_CONFIG, CONF_USERNAME)
 
+    parser.add_option("-p", "--priority",
+        help="One of [%s], (default %r)" % (
+            PRIORITIES,
+            DEF_PRIORITY,
+            ),
+        dest=OPT_PRIORITY,
+        action="callback",
+        callback=sloppy_choice_callback,
+        callback_args=(PRIORITIES,),
+        default=DEF_PRIORITY,
+        )
     parser.add_option("-m", "--email",
         help="Email adddress of the submitter "
             "(default %r)" % default_email,
@@ -616,17 +685,6 @@ def tweaking_options(config):
         dest=CONF_EDITOR,
         action="store",
         default=guess_editor(config),
-        )
-    parser.add_option("-p", "--priority",
-        help="One of [%s], (default %r)" % (
-            PRIORITIES,
-            DEF_PRIORITY,
-            ),
-        dest=OPT_PRIORITY,
-        action="callback",
-        callback=sloppy_choice_callback,
-        callback_args=(PRIORITIES,),
-        default=DEF_PRIORITY,
         )
     return parser
 
