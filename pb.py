@@ -110,7 +110,6 @@ CONF_EDITOR = "editor"
 ##################################################
 OPT_CONFIG = "config"
 OPT_EMAIL = "email"
-OPT_MESSAGE = "message"
 OPT_PRIORITY = "priority"
 OPT_REVISION = "revision"
 OPT_USERNAME = "username"
