@@ -187,25 +187,28 @@ def clean_message(content):
 
 def edit(editor, s=""):
     "Spawn $editor to edit the content of 's'"
-    (fd, name) = tempfile.mkstemp(
-        prefix=APP_NAME,
-        suffix=".txt",
-        text=True,
-        )
-    try:
-        f = os.fdopen(fd, "w")
+    if sys.stdin.isatty():
+        (fd, name) = tempfile.mkstemp(
+            prefix=APP_NAME,
+            suffix=".txt",
+            text=True,
+            )
         try:
-            f.write(s)
+            f = os.fdopen(fd, "w")
+            try:
+                f.write(s)
+            finally:
+                f.close()
+            subprocess.call([editor, name])
+            f = file(name)
+            try:
+                return f.read()
+            finally:
+                f.close()
         finally:
-            f.close()
-        subprocess.call([editor, name])
-        f = file(name)
-        try:
-            return f.read()
-        finally:
-            f.close()
-    finally:
-        os.unlink(name)
+            os.unlink(name)
+    else:
+        return sys.stdin.read()
 
 def short_desc(fn):
     return getattr(fn, "__doc__", "<undefined>").splitlines()[0]
@@ -471,12 +474,9 @@ def do_add(options, config, args):
     log.info("Subject %r", subject)
 
     if getattr(add_options, OPT_GATHER_MESSAGE):
-        if sys.stdin.isatty():
-            orig_content = make_message(comments=subject.encode("string_escape"))
-            content = edit(getattr(add_options, CONF_EDITOR), orig_content)
-            content = clean_message(content)
-        else:
-            content = sys.stdin.read()
+        orig_content = make_message(comments=subject.encode("string_escape"))
+        content = edit(getattr(add_options, CONF_EDITOR), orig_content)
+        content = clean_message(content)
     else:
         content = subject
 
