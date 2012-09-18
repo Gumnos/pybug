@@ -477,7 +477,7 @@ def do_add(options, config, args):
         content = edit(getattr(add_options, CONF_EDITOR), orig_content)
         content = clean_message(content)
     else:
-        content = subject
+        content = subject + '\n'
 
     todo_dir = find_dir_based_on_config(config)
     dest_dir = find_or_create_category_dir(todo_dir, category)
