@@ -150,6 +150,9 @@ def clean(s):
     return s.strip().lower()
 
 def make_message(existing=None, comments=None):
+    """Make a message string, including existing content
+    and additional comment material
+    """
     TEMPLATE = "%s %%s" % CONTENT_PREFIX_TO_IGNORE
     if existing is None:
         results = [""] * 2 # some blank lines
@@ -172,6 +175,17 @@ def make_message(existing=None, comments=None):
         for s in comments
         )
     return '\n'.join(results)
+
+def clean_message(content):
+    # remove the comment-prefixed lines
+    content = '\n'.join(
+        line
+        for line in content.splitlines()
+        if not line.startswith(CONTENT_PREFIX_TO_IGNORE)
+        )
+    # remove leading/trailing blank lines
+    content = content.strip()
+    return content
 
 def edit(editor, s=""):
     "Spawn $editor to edit the content of 's'"
@@ -343,7 +357,7 @@ class CombinedUserEmailVCS(VCS):
         return self.name
     def get_email(self):
         return self.email
-    
+
 class Bazaar(CombinedUserEmailVCS):
     @classmethod
     def is_here(self, dir):
@@ -464,14 +478,9 @@ def do_add(options, config, args):
     log.info("Subject %r", subject)
 
     if sys.stdin.isatty():
-        content = make_message(comments=subject.encode("string_escape"))
-        content = edit(getattr(add_options, CONF_EDITOR), content)
-        content = content.strip() # remove leading/trailing blank lines
-        content = '\n'.join(
-            line
-            for line in content.splitlines()
-            if not line.startswith(CONTENT_PREFIX_TO_IGNORE)
-            )
+        orig_content = make_message(comments=subject.encode("string_escape"))
+        content = edit(getattr(add_options, CONF_EDITOR), orig_content)
+        content = clean_message(content)
     else:
         content = sys.stdin.read()
 
