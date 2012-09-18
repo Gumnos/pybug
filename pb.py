@@ -493,6 +493,7 @@ def do_add(options, config, args):
     full_fname = os.path.join(dest_dir, fname)
     log.debug("Location %r", full_fname)
     mbox = mailbox.mbox(full_fname)
+    results.append("Added " + os.path.relpath(full_fname))
     mbox.lock()
     try:
         mbox.add(item)
@@ -759,7 +760,7 @@ def main(*args):
     log.debug("Command %r %r", cmd, rest)
     results = CMD_MAP[cmd](options, config, rest)
     for result in results:
-        print result
+        print str(result)
 
 if __name__ == "__main__":
     sys.exit(main(*sys.argv))
