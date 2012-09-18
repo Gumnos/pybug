@@ -117,7 +117,7 @@ OPT_USERNAME = "username"
 OPT_VERBOSE = "verbose"
 
 ##################################################
-# parser constants
+# parser commands
 ##################################################
 CMD_HELP = "help"
 CMD_ADD = "add"
