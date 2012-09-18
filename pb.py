@@ -121,7 +121,6 @@ OPT_VERBOSE = "verbose"
 ##################################################
 CMD_HELP = "help"
 CMD_ADD = "add"
-CMD_COMPLETE = "complete"
 CMD_CLOSE = "close"
 CMD_DONE1 = "done"
 CMD_DONE2 = "do"
@@ -501,7 +500,7 @@ def do_add(options, config, args):
         mbox.unlock()
     return results
 
-def do_complete(options, config, args):
+def do_close(options, config, args):
     """List completion options
     """
     results = []
@@ -547,10 +546,9 @@ def do_search(options, config, args):
 CMDS = [
     (CMD_HELP, do_help),
     (CMD_ADD, do_add),
-    (CMD_COMPLETE, do_complete),
-    (CMD_CLOSE, do_complete),
-    (CMD_DONE1, do_complete),
-    (CMD_DONE2, do_complete),
+    (CMD_CLOSE, do_close),
+    (CMD_DONE1, do_close),
+    (CMD_DONE2, do_close),
     (CMD_EDIT, do_edit),
     (CMD_COMMENT, do_comment),
     (CMD_SHOW, do_show),
