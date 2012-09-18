@@ -16,7 +16,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import unittest
 
 APP_NAME = "pb"
 
@@ -120,7 +119,6 @@ OPT_VERBOSE = "verbose"
 ##################################################
 # parser constants
 ##################################################
-CMD_TEST = "test"
 CMD_HELP = "help"
 CMD_ADD = "add"
 CMD_COMPLETE = "complete"
@@ -400,12 +398,6 @@ def find_vcs(dir):
 ##################################################
 # implementation
 ##################################################
-def do_test(options, config, args):
-    """Run the test suite
-    """
-    unittest.main(argv=[__file__])
-    return []
-
 def do_help(options, config, args):
     """Help on a command
     """
@@ -560,7 +552,6 @@ CMDS = [
     (CMD_SHOW, do_show),
     (CMD_LIST, do_search),
     (CMD_SEARCH, do_search),
-    (CMD_TEST, do_test),
     ]
 CMD_MAP = dict(CMDS)
 
@@ -720,34 +711,6 @@ def get_default_config():
             ):
         c.set(CONF_SEC_CONFIG, name, value)
     return c
-
-class TestCommands(unittest.TestCase):
-    def setUp(self):
-        # push to a temp directory
-        self._old_wd = os.getcwd()
-        self._new_wd = tempfile.mkdtemp()
-        os.chdir(self._new_wd)
-        # grab a default config
-        self.config = get_default_config()
-
-    def tearDown(self):
-        # pop the temp directory
-        os.chdir(self._old_wd)
-        shutil.rmtree(self._new_wd)
-
-    #def test_dump_config(self):
-        #self.config.write(sys.stdout)
-    def test_complete(self):
-        "List of subfunction possibilities"
-    def test_add(self):
-        "Add a task"
-        main(CMD_ADD, "join", "together")
-    def test_edit(self):
-        "Edit a task"
-    def close(self):
-        "Close a task"
-    def test_add_comment(self):
-        "Add a comment"
 
 def increase_verbosity(cur_level, levels):
     known = sorted((
