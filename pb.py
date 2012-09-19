@@ -150,6 +150,7 @@ HEAD_DATE = "Date"
 HEAD_REFERENCES = "References"
 HEAD_MSG_ID = "Message-ID"
 HEAD_PRIORITY = "X-Priority"
+HEAD_REVISION = "X-Revision"
 
 ##################################################
 # helper functions
@@ -328,6 +329,7 @@ def build_item(
         subject,
         category,
         priority,
+        revision,
         content,
         ):
     msg = email.MIMEText.MIMEText(content)
@@ -338,6 +340,8 @@ def build_item(
     msg[HEAD_MSG_ID] = email.utils.make_msgid(
         transform_subject_to_filename(subject))
     msg[HEAD_PRIORITY] = make_priority_string(priority)
+    if revision:
+        msg[HEAD_REVISION] = revision
     msg.preamble = content
     msg = mailbox.mboxMessage(msg)
     msg.set_from(user_string)
@@ -519,6 +523,7 @@ def do_add(options, config, args):
         subject,
         category,
         clean(getattr(add_options, OPT_PRIORITY)),
+        getattr(add_options, OPT_REVISION),
         content,
         )
     full_fname = os.path.join(dest_dir, fname)
