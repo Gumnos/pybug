@@ -727,11 +727,12 @@ def tweaking_options(config):
         action="store",
         default=None,
         )
+    editor = guess_editor(config)
     parser.add_option("-e", "--editor",
-        help="Editor",
+        help="Editor (%s)" % editor,
         dest=CONF_EDITOR,
         action="store",
-        default=guess_editor(config),
+        default=editor,
         )
     return parser
 
