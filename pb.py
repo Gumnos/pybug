@@ -83,14 +83,25 @@ DEF_PENDING_CATEGORIES = set([
     ])
 DEF_DONE_CATEGORY = "done"
 DEF_DIRNAME = "todo"
-DEF_PRIORITY = "normal"
+DEF_PRIORITY_STR = "normal"
+DEF_PRIORITY_NUM = 3
 PRIORITIES = [
-    "highest", # 1
-    "high",
-    DEF_PRIORITY,
-    "low",
-    "lowest", # 5
+    ("highest", 1),
+    ("high", 2),
+    (DEF_PRIORITY_STR, DEF_PRIORITY_NUM),
+    ("low", 4),
+    ("lowest", 5),
     ]
+PRIORITY_NAME_TO_NUMBER = dict(PRIORITIES)
+PRIORITY_NUMBER_TO_NAME = dict(
+    (number, name)
+    for name, number in PRIORITIES
+    )
+
+PRIORITY_STRING = ', '.join(
+    "%s/%i" % (name, number)
+    for name, number in PRIORITIES
+    )
 
 CONTENT_PREFIX_TO_IGNORE = "#" + APP_NAME
 
@@ -291,6 +302,26 @@ def choose(prompt, choices):
     log.debug("Arbitrarily choosing %r from %r", choices[0], choices)
     return choices[0]
 
+def make_priority_string(s, default=False):
+    s = clean(s)
+    if s in PRIORITY_NAME_TO_NUMBER:
+        name = s
+        number = PRIORITY_NAME_TO_NUMBER[s]
+    else:
+        try:
+            number = int(s)
+        except ValueError:
+            if default:
+                name, number = DEF_PRIORITY_STR, DEF_PRIORITY_NUM
+            else:
+                raise InvalidPriority("s")
+        else:
+            if number in PRIORITY_NUMBER_TO_NAME:
+                name = PRIORITY_NUMBER_TO_NAME[number]
+            else:
+                name, number = DEF_PRIORITY_STR, DEF_PRIORITY_NUM
+    return "%s (%s)" % (number, name.title())
+
 def build_item(
         username,
         email_address,
@@ -306,7 +337,7 @@ def build_item(
     msg[HEAD_DATE] = email.utils.formatdate()
     msg[HEAD_MSG_ID] = email.utils.make_msgid(
         transform_subject_to_filename(subject))
-    msg[HEAD_PRIORITY] = priority
+    msg[HEAD_PRIORITY] = make_priority_string(priority)
     msg.preamble = content
     msg = mailbox.mboxMessage(msg)
     msg.set_from(user_string)
@@ -594,7 +625,7 @@ def options_cmd_rest(args):
         cmd = None
     return parser, options, cmd, args
 
-def guess_one_of(given, choices, prompt):
+def guess_one_of(given, choices, prompt=False):
     if given in choices: return given
     # see if it starts with the given text
     possible = [
@@ -615,15 +646,11 @@ def guess_one_of(given, choices, prompt):
             return choose("Category", sorted(possible))
     return possible[0]
 
-def sloppy_choice_callback(option, opt_str, value, parser, choices):
+def sloppy_choice_callback(option, opt_str, given, parser, choices):
     "Works like a <choice> option, but allows for partial matching"
-    if len(parser.rargs) == 0:
-        raise optparse.OptionValueError("Must specify a priority from %r" %
-            choices)
-    given = clean(parser.rargs.pop(0))
+    WARNING = ("Must specify a priority from [%s]" %
+            ", ".join(choices))
     value = guess_one_of(given, choices)
-    if value is None:
-        raise optparse.OptionValueError("Must specify a priority from %r" % choices)
     setattr(parser.values, option.dest, value)
 
 def guess_editor(config):
@@ -652,16 +679,22 @@ def tweaking_options(config):
     default_email = config.get(CONF_SEC_CONFIG, CONF_EMAIL)
     default_user = config.get(CONF_SEC_CONFIG, CONF_USERNAME)
 
+    ALL_PRIORITIES = (
+        PRIORITY_NAME_TO_NUMBER.keys() +
+        map(str, PRIORITY_NUMBER_TO_NAME.keys())
+        )
     parser.add_option("-p", "--priority",
         help="One of [%s], (default %r)" % (
-            PRIORITIES,
-            DEF_PRIORITY,
+            PRIORITY_STRING,
+            DEF_PRIORITY_STR,
             ),
         dest=OPT_PRIORITY,
         action="callback",
+        type="string",
+        #nargs=2,
         callback=sloppy_choice_callback,
-        callback_args=(PRIORITIES,),
-        default=DEF_PRIORITY,
+        callback_args=(ALL_PRIORITIES, ),
+        default=DEF_PRIORITY_STR,
         )
     parser.add_option("-m", "--email",
         help="Email adddress of the submitter "
