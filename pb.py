@@ -361,10 +361,14 @@ class VCS(object):
     def get_name(self): return self.default_user
     def get_email(self): return self.default_email
     def get_rev(self): return None
-    def _output_of(self, cmd):
+    def add_file(self, fname):
+        pass
+    def move_file(self, existing_file, dest):
+        pass
+    def _output_of(self, *cmd):
         "a helper function to fetch the output of a given command"
         import subprocess
-        return subprocess.check_output(cmd).strip()
+        return subprocess.check_output(*cmd).strip()
 
 class Git(VCS):
     @classmethod
@@ -376,6 +380,13 @@ class Git(VCS):
         return self._output_of("git config --get user.email") or self.default_email
     def get_rev(self):
         return self._output_of("git rev-parse HEAD")
+    def add_file(self, fname):
+        super(Git, self).add_file(fname)
+        return self._output_of("git", "add", fname)
+    def move_file(self, existing_file, dest):
+        super(Git, self).move_file(existing_file, dest)
+        return self._output_of("git", "mv", existing_file, dest)
+
 class CombinedUserEmailVCS(VCS):
     def __init__(self, dir, config):
         VCS.__init__(self, dir, config)
@@ -401,6 +412,12 @@ class Bazaar(CombinedUserEmailVCS):
         info = self._output_of("bzr whoami")
     def get_rev(self):
         return self._output_of("bzr version-info --template='{revision_id}' --custom")
+    def add_file(self, fname):
+        super(Bazaar, self).add_file(fname)
+        return self._output_of("bzr", "add", fname)
+    def move_file(self, existing_file, dest):
+        super(Bazaar, self).move_file(existing_file, dest)
+        return self._output_of("bzr", "mv", existing_file, dest)
 
 class Mercurial(CombinedUserEmailVCS):
     @classmethod
@@ -410,6 +427,12 @@ class Mercurial(CombinedUserEmailVCS):
         info = self._output_of("hg showconfig ui.username")
     def get_rev(self):
         return self._output_of("hg parents --template '{node}'")
+    def add_file(self, fname):
+        super(Mercurial, self).add_file(fname)
+        return self._output_of("hg", "add", fname)
+    def move_file(self, existing_file, dest):
+        super(Mercurial, self).move_file(existing_file, dest)
+        return self._output_of("hg", "mv", existing_file, dest)
 
 class Subversion(VCS):
     @classmethod
@@ -418,11 +441,17 @@ class Subversion(VCS):
         return os.path.isdir('.svn')
     def get_rev(self):
         pass
+    def add_file(self, fname):
+        super(Subversion, self).add_file(fname)
+        return self._output_of("svn", "add", fname)
+    def move_file(self, existing_file, dest):
+        super(Subversion, self).move_file(existing_file, dest)
+        return self._output_of("svn", "mv", existing_file, dest)
 
 VCS_HELPERS = [
     Git,
-    Bazaar,
     Mercurial,
+    Bazaar,
     Subversion,
     ]
 
