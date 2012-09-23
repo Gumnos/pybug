@@ -590,6 +590,12 @@ def do_add(options, config, args):
         mbox.add(item)
     finally:
         mbox.unlock()
+    try:
+        vcs = get_vcs(config)
+    except ValueError:
+        pass
+    else:
+        vcs.add_file(full_fname)
     return results
 
 def do_close(options, config, args):
