@@ -110,7 +110,7 @@ PRIORITY_STRING = ', '.join(
 
 CONTENT_PREFIX_TO_IGNORE = "#" + APP_NAME
 
-DEF_VCS = "auto"
+DEF_VCS = VCS_AUTO = "auto"
 
 ##################################################
 # configuration .ini constants
@@ -361,6 +361,7 @@ def build_item(
 # helper class for VCS integration
 ##################################################
 class VCS(object):
+    NAMES = []
     @classmethod
     def is_here(self, dir): return False
     def __init__(self, dir, config):
@@ -371,15 +372,21 @@ class VCS(object):
     def get_email(self): return self.default_email
     def get_rev(self): return None
     def add_file(self, fname):
-        pass
+        log.info("Adding %r to %s control",
+            fname,
+            self.__class__.__name__,
+            )
     def move_file(self, existing_file, dest):
         pass
     def _output_of(self, *cmd):
         "a helper function to fetch the output of a given command"
-        import subprocess
-        return subprocess.check_output(*cmd).strip()
+        import subprocess as sub
+        proc = sub.Popen(cmd, stderr=sub.PIPE, stdout=sub.PIPE)
+        output, errors = proc.communicate()
+        return output
 
 class Git(VCS):
+    NAMES = ["git"]
     @classmethod
     def is_here(self, dir):
         return bool(find_dir('.git'))
@@ -414,6 +421,7 @@ class CombinedUserEmailVCS(VCS):
         return self.email
 
 class Bazaar(CombinedUserEmailVCS):
+    NAMES = ["bzr", "Bazaar"]
     @classmethod
     def is_here(self, dir):
         return bool(find_dir('.bzr'))
@@ -429,6 +437,7 @@ class Bazaar(CombinedUserEmailVCS):
         return self._output_of("bzr", "mv", existing_file, dest)
 
 class Mercurial(CombinedUserEmailVCS):
+    NAMES = ["hg", "Mercurial"]
     @classmethod
     def is_here(self, dir):
         return bool(find_dir('.hg'))
@@ -444,12 +453,14 @@ class Mercurial(CombinedUserEmailVCS):
         return self._output_of("hg", "mv", existing_file, dest)
 
 class Subversion(VCS):
+    NAMES = ["svn", "Subversion"]
     @classmethod
     def is_here(self, dir):
         # Subversion only checks the current directory
         return os.path.isdir('.svn')
     def get_rev(self):
-        pass
+        #TODO
+        return None
     def add_file(self, fname):
         super(Subversion, self).add_file(fname)
         return self._output_of("svn", "add", fname)
@@ -464,11 +475,17 @@ VCS_HELPERS = [
     Subversion,
     ]
 
-def find_vcs(dir):
+def get_vcs(config, dir='.'):
+    import pdb; pdb.set_trace()
+    vcs_name = clean(config.get(CONF_SEC_CONFIG, CONF_VCS))
     for vcs in VCS_HELPERS:
-        if vcs.is_here(dir):
-            return vcs(dir)
-    return None
+        if vcs_name in [clean(name) for name in vcs.NAMES]:
+            return vcs(dir, config)
+    if vcs_name == VCS_AUTO:
+        for vcs in VCS_HELPERS:
+            if vcs.is_here(dir):
+                return vcs(dir, config)
+    raise ValueError("Unknown vcs value %r" % vcs)
 
 ##################################################
 # implementation
