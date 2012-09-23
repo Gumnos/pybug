@@ -459,8 +459,7 @@ class Subversion(VCS):
         # Subversion only checks the current directory
         return os.path.isdir('.svn')
     def get_rev(self):
-        #TODO
-        return None
+        return self._output_of("svnversion")
     def add_file(self, fname):
         super(Subversion, self).add_file(fname)
         return self._output_of("svn", "add", fname)
