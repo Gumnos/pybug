@@ -17,6 +17,11 @@ import subprocess
 import sys
 import tempfile
 
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
+
 APP_NAME = "pb"
 
 DEFAULT_ERROR_LEVEL = logging.FATAL
@@ -105,6 +110,8 @@ PRIORITY_STRING = ', '.join(
 
 CONTENT_PREFIX_TO_IGNORE = "#" + APP_NAME
 
+DEF_VCS = "auto"
+
 ##################################################
 # configuration .ini constants
 ##################################################
@@ -115,6 +122,7 @@ CONF_EMAIL = "email"
 CONF_PENDING_CATEGORIES = "pending_categories"
 CONF_USERNAME = "name"
 CONF_EDITOR = "editor"
+CONF_VCS = "vcs"
 
 ##################################################
 # parser constants
@@ -140,6 +148,7 @@ CMD_SHOW = "show"
 CMD_COMMENT = "comment"
 CMD_LIST = "list"
 CMD_SEARCH = "search"
+CMD_DUMP_CONFIG = "dump_config"
 
 ##################################################
 # message-header constants
@@ -609,6 +618,12 @@ def do_search(options, config, args):
         results.append(mbox)
     return results
 
+def do_dump_config(options, config, args):
+    tmp = StringIO()
+    config.write(tmp)
+    tmp.seek(0)
+    return [line.rstrip() for line in tmp]
+
 CMDS = [
     (CMD_HELP, do_help),
     (CMD_ADD, do_add),
@@ -620,6 +635,7 @@ CMDS = [
     (CMD_SHOW, do_show),
     (CMD_LIST, do_search),
     (CMD_SEARCH, do_search),
+    (CMD_DUMP_CONFIG, do_dump_config),
     ]
 CMD_MAP = dict(CMDS)
 
@@ -785,6 +801,7 @@ def get_default_config():
             (CONF_USERNAME, LOCAL_USERNAME),
             (CONF_DIRNAME, DEF_DIRNAME),
             (CONF_DONE_CATEGORY, DEF_DONE_CATEGORY),
+            (CONF_VCS, DEF_VCS),
             ):
         c.set(CONF_SEC_CONFIG, name, value)
     return c
