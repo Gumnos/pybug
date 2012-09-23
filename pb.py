@@ -619,6 +619,8 @@ def do_search(options, config, args):
     return results
 
 def do_dump_config(options, config, args):
+    """Dump the default+existing config to stdout
+    """
     tmp = StringIO()
     config.write(tmp)
     tmp.seek(0)
