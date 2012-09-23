@@ -864,8 +864,13 @@ def main(*args):
         parser.print_help()
         return 1
     if cmd not in CMD_MAP:
-        rest = [cmd] + rest
-        cmd = CMD_LIST
+        for cmd_desc, fn in CMDS:
+            if cmd_desc.startswith(cmd):
+                cmd = cmd_desc
+                break
+        else:
+            rest = [cmd] + rest
+            cmd = CMD_LIST
     log.debug("Command %r %r", cmd, rest)
     results = CMD_MAP[cmd](options, config, rest)
     for result in results:
