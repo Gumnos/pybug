@@ -148,7 +148,7 @@ CMD_SHOW = "show"
 CMD_COMMENT = "comment"
 CMD_LIST = "list"
 CMD_SEARCH = "search"
-CMD_DUMP_CONFIG = "dump_config"
+CMD_DUMP_CONFIG = "dump-config"
 
 ##################################################
 # message-header constants
