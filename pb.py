@@ -777,6 +777,7 @@ def tweaking_options(config):
         dest=OPT_ATTACHMENTS,
         metavar="FILE",
         action="append",
+        default=[],
         )
     parser.add_option("-m", "--email",
         help="Email adddress of the submitter "
