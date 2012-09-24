@@ -477,7 +477,6 @@ VCS_HELPERS = [
     ]
 
 def get_vcs(config, dir='.'):
-    import pdb; pdb.set_trace()
     vcs_name = clean(config.get(CONF_SEC_CONFIG, CONF_VCS))
     for vcs in VCS_HELPERS:
         if vcs_name in [clean(name) for name in vcs.NAMES]:
