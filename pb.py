@@ -128,6 +128,7 @@ CONF_VCS = "vcs"
 # parser constants
 ##################################################
 OPT_CONFIG = "config"
+OPT_ATTACHMENTS = "attachments"
 OPT_EMAIL = "email"
 OPT_PRIORITY = "priority"
 OPT_GATHER_MESSAGE = "gather_message"
@@ -340,6 +341,7 @@ def build_item(
         priority,
         revision,
         content,
+        attachments,
         ):
     msg = email.MIMEText.MIMEText(content)
     user_string = email.utils.formataddr((username, email_address))
@@ -572,13 +574,14 @@ def do_add(options, config, args):
     dest_dir = find_or_create_category_dir(todo_dir, category)
     fname = transform_subject_to_filename(subject) + ".mbox"
     item = build_item(
-        add_options.username,
-        add_options.email,
+        getattr(add_options, OPT_USERNAME),
+        getattr(add_options, OPT_EMAIL),
         subject,
         category,
         clean(getattr(add_options, OPT_PRIORITY)),
         getattr(add_options, OPT_REVISION),
         content,
+        getattr(add_options, OPT_ATTACHMENTS),
         )
     full_fname = os.path.join(dest_dir, fname)
     log.debug("Location %r", full_fname)
@@ -769,6 +772,12 @@ def tweaking_options(config):
         callback=sloppy_choice_callback,
         callback_args=(ALL_PRIORITIES, ),
         default=DEF_PRIORITY_STR,
+        )
+    parser.add_option("-a", "--attach",
+        help='Attach a file ("-" for stdin)',
+        dest=OPT_ATTACHMENTS,
+        metavar="FILE",
+        action="append",
         )
     parser.add_option("-m", "--email",
         help="Email adddress of the submitter "
